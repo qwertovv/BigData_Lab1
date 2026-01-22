@@ -66,6 +66,22 @@ class ImageDownloader:
             if not os.path.exists(class_path):
                 os.makedirs(class_path)
             self.class_folders[class_name] = class_path
+    def download_class_images(self, class_name, query_in_russian):
+        folder_path = self.class_folders[class_name]
+        image_urls = self.get_yandex_image_urls(query_in_russian)
+        
+        downloaded_count = 0
+        for i, url in enumerate(image_urls):
+            if downloaded_count >= 1000:
+                break
+                
+            filename = self.generate_filename(downloaded_count)
+            save_path = os.path.join(folder_path, filename)
+            
+            if self.download_image(url, save_path):
+                downloaded_count += 1
+        
+        return downloaded_count
 
 if __name__ == "__main__":
     downloader = ImageDownloader()
