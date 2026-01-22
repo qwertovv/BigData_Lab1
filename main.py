@@ -3,6 +3,7 @@ import os
 import json
 import urllib.parse
 import time
+import hashlib
 
 class ImageDownloader:
     def __init__(self):
@@ -82,6 +83,25 @@ class ImageDownloader:
                 downloaded_count += 1
         
         return downloaded_count
+    def remove_duplicates(self, folder_path):
+        image_hashes = set()
+        files_to_remove = []
+        
+        for filename in os.listdir(folder_path):
+            if filename.endswith('.jpg'):
+                filepath = os.path.join(folder_path, filename)
+                with open(filepath, 'rb') as f:
+                    file_hash = hashlib.md5(f.read()).hexdigest()
+                
+                if file_hash in image_hashes:
+                    files_to_remove.append(filepath)
+                else:
+                    image_hashes.add(file_hash)
+        
+        for filepath in files_to_remove:
+            os.remove(filepath)
+        
+        return len(files_to_remove)
 
 if __name__ == "__main__":
     downloader = ImageDownloader()
