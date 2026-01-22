@@ -1,10 +1,10 @@
 import os
 import requests
 import time
-import cv2
 import hashlib
-import json
+import re
 import urllib.parse
+from PIL import Image
 
 class ImageDownloader:
     def __init__(self):
@@ -16,9 +16,11 @@ class ImageDownloader:
         
         # Заголовки для запросов (имитируем браузер)
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
         }
         
         # Папки для каждого класса
@@ -34,92 +36,92 @@ class ImageDownloader:
                 print(f"Создана папка для класса: {class_name}")
             self.class_folders[class_name] = class_path
     
-    def get_yandex_image_urls(self, query, num_images=1200):
+    def get_image_urls_simple(self, query, num_images=50):
         """
-        Получение URL изображений через Яндекс.Картинки
-        Используем API Яндекс.Картинок
+        Простой парсинг HTML страницы Яндекс.Картинок
         """
         image_urls = []
-        page = 0  # Начинаем с первой страницы
+        page = 0
         
         try:
-            # Преобразуем запрос в URL-формат
+            # Кодируем запрос
             encoded_query = urllib.parse.quote(query)
             
             while len(image_urls) < num_images:
-                # Формируем URL для API Яндекс.Картинок
-                # Здесь используется эмпирически найденный формат запроса
-                url = f"https://yandex.ru/images/api/v2/search"
+                # Формируем URL для поиска
+                if page == 0:
+                    url = f"https://yandex.ru/images/search?text={encoded_query}&isize=large"
+                else:
+                    url = f"https://yandex.ru/images/search?p={page}&text={encoded_query}&isize=large"
                 
-                params = {
-                    'text': query,
-                    'type': 'photo',
-                    'p': page,  # номер страницы
-                    'nomisspell': 1,
-                    'noreask': 1,
-                    'isize': 'large',  # запрашиваем большие изображения
-                }
+                print(f"Запрос страницы {page}: {url}")
                 
-                print(f"Запрос страницы {page} для: {query}")
-                
-                # Отправляем GET-запрос
-                response = requests.get(
-                    url, 
-                    headers=self.headers, 
-                    params=params,
-                    timeout=30
-                )
+                response = requests.get(url, headers=self.headers, timeout=30)
                 
                 if response.status_code != 200:
-                    print(f"Ошибка {response.status_code} при запросе")
+                    print(f"Ошибка {response.status_code}")
                     break
                 
-                try:
-                    # Пробуем распарсить JSON ответ
-                    data = response.json()
-                    
-                    # Проверяем структуру ответа
-                    if 'items' not in data or not data['items']:
-                        print("Больше нет изображений")
-                        break
-                    
-                    # Извлекаем URL изображений
-                    for item in data['items']:
+                html = response.text
+                
+                # Ищем URL изображений в HTML
+                # Паттерны для поиска URL изображений в Яндекс.Картинках
+                patterns = [
+                    r'"origin":{"url":"([^"]+)"',  # JSON форма
+                    r'src="(https://[^"]+\.ya[_\-]?img\.ru/[^"]+)"',  # Прямые ссылки
+                    r'img_url=([^&]+)&',  # Параметры URL
+                    r'https://avatars\.mds\.yandex\.net/[^"\s]+',  # Аватары
+                ]
+                
+                for pattern in patterns:
+                    matches = re.findall(pattern, html)
+                    for match in matches:
                         if len(image_urls) >= num_images:
                             break
                         
-                        # Пробуем разные пути к URL изображения
-                        img_url = None
+                        # Очищаем URL
+                        if match.startswith('https://'):
+                            img_url = match
+                        elif match.startswith('//'):
+                            img_url = 'https:' + match
+                        else:
+                            # Декодируем URL если он в кодированном виде
+                            try:
+                                img_url = urllib.parse.unquote(match)
+                                if not img_url.startswith('http'):
+                                    continue
+                            except:
+                                continue
                         
-                        # Проверяем возможные структуры данных
-                        if 'img_href' in item:
-                            img_url = item['img_href']
-                        elif 'origin' in item and 'url' in item['origin']:
-                            img_url = item['origin']['url']
-                        elif 'url' in item:
-                            img_url = item['url']
-                        elif 'preview' in item and 'url' in item['preview']:
-                            # Иногда нужно получить оригинал через preview
-                            img_url = item['preview']['url']
-                            # Пробуем преобразовать в оригинальный URL
-                            img_url = img_url.replace('m00', 'orig00')
+                        # Проверяем, что это изображение
+                        if any(ext in img_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']):
+                            if img_url not in image_urls:
+                                image_urls.append(img_url)
+                                print(f"Найдено изображений: {len(image_urls)}/{num_images}")
+                
+                # Если на этой странице не нашли изображений, пробуем другой метод
+                if len(image_urls) == 0:
+                    # Альтернативный метод поиска
+                    img_tags = re.findall(r'<img[^>]+src="([^">]+)"', html)
+                    for img_src in img_tags:
+                        if len(image_urls) >= num_images:
+                            break
                         
-                        if img_url and img_url.startswith('http'):
-                            # Проверяем, что это действительно изображение
-                            if any(ext in img_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                                if img_url not in image_urls:  # Проверяем уникальность
-                                    image_urls.append(img_url)
-                                    print(f"Найдено изображений: {len(image_urls)}/{num_images}")
-                    
-                    page += 1
-                    
-                    # Задержка чтобы не перегружать сервер
-                    time.sleep(1)
-                    
-                except json.JSONDecodeError:
-                    print("Ошибка парсинга JSON")
-                    # Попробуем парсить HTML если JSON не получился
-                    self.parse_html_for_images(response.text, image_urls, num_images)
+                        if img_src.startswith('//'):
+                            img_src = 'https:' + img_src
+                        
+                        if img_src.startswith('http') and any(ext in img_src.lower() for ext in ['.jpg', '.jpeg', '.png']):
+                            if img_src not in image_urls:
+                                image_urls.append(img_src)
+                                print(f"Найдено (alt метод): {len(image_urls)}/{num_images}")
+                
+                page += 1
+                
+                # Задержка между запросами
+                time.sleep(2)
+                
+                # Ограничим количество страниц
+                if page > 5:  # Максимум 5 страниц
                     break
                     
         except Exception as e:
@@ -127,301 +129,255 @@ class ImageDownloader:
         
         return image_urls[:num_images]
     
-    def parse_html_for_images(self, html, image_urls, num_images):
-        """Резервный метод: парсинг HTML если API не работает"""
+    def get_image_urls_alternative(self, query, num_images=50):
+        """
+        Альтернативный метод - используем Bing/Google Images API
+        """
+        image_urls = []
+        
         try:
-            # Ищем все ссылки на изображения в HTML
-            import re
-            # Паттерн для поиска URL изображений
-            img_patterns = [
-                r'src="(https?://[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"',
-                r'data-src="(https?://[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"',
-                r'orig="(https?://[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"',
-            ]
+            # Используем Bing Image Search API (бесплатно, до 1000 запросов в месяц)
+            # Для теста используем открытые API
+            subscription_key = ""  # Оставьте пустым, будем использовать другой метод
             
-            for pattern in img_patterns:
-                matches = re.findall(pattern, html, re.IGNORECASE)
+            if not subscription_key:
+                # Если нет ключа API, используем простой веб-скрапинг Google Images
+                encoded_query = urllib.parse.quote(query)
+                url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+                
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                
+                response = requests.get(url, headers=headers)
+                html = response.text
+                
+                # Ищем изображения в Google
+                # Google хранит изображения в base64 или в данных-аттрибутах
+                import base64
+                
+                # Ищем URL в JSON данных
+                pattern = r'"ou":"([^"]+)"'
+                matches = re.findall(pattern, html)
+                
                 for match in matches:
                     if len(image_urls) >= num_images:
-                        return
-                    if match not in image_urls:
-                        image_urls.append(match)
-                        print(f"Найдено изображений в HTML: {len(image_urls)}/{num_images}")
+                        break
+                    
+                    if match.startswith('http') and any(ext in match.lower() for ext in ['.jpg', '.jpeg', '.png']):
+                        if match not in image_urls:
+                            image_urls.append(match)
+                            print(f"Найдено (Google): {len(image_urls)}/{num_images}")
+                
         except Exception as e:
-            print(f"Ошибка при парсинге HTML: {e}")
+            print(f"Ошибка альтернативного метода: {e}")
+        
+        return image_urls[:num_images]
     
     def download_image(self, url, save_path):
         """Загрузка одного изображения"""
         try:
-            # Добавляем реферер для Яндекс
+            # Добавляем реферер
             headers = self.headers.copy()
-            headers['Referer'] = 'https://yandex.ru/images/'
+            headers['Referer'] = 'https://yandex.ru/'
             
-            # Устанавливаем таймауты
+            # Пробуем загрузить с таймаутом
             response = requests.get(url, headers=headers, timeout=10, stream=True)
             
             if response.status_code == 200:
-                # Проверяем, что это изображение
+                # Проверяем content-type
                 content_type = response.headers.get('content-type', '')
-                if 'image' not in content_type:
+                if 'image' not in content_type and 'octet-stream' not in content_type:
                     print(f"Не изображение: {content_type}")
                     return False
                 
-                # Сохраняем изображение
+                # Сохраняем файл
                 with open(save_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
                 
-                # Проверяем, что файл не пустой
+                # Проверяем размер файла
                 if os.path.getsize(save_path) > 1024:  # Минимум 1KB
-                    # Конвертируем в JPG если нужно
-                    self.convert_to_jpg(save_path)
-                    return True
+                    # Пробуем открыть как изображение для проверки
+                    try:
+                        with Image.open(save_path) as img:
+                            img.verify()  # Проверяем, что это валидное изображение
+                        return True
+                    except:
+                        # Если не удалось открыть, удаляем файл
+                        os.remove(save_path)
+                        return False
                 else:
-                    os.remove(save_path)  # Удаляем пустой файл
+                    os.remove(save_path)
                     return False
                     
         except Exception as e:
-            print(f"Ошибка загрузки {url}: {e}")
+            print(f"Ошибка загрузки: {e}")
             return False
     
     def convert_to_jpg(self, image_path):
-        """Конвертация изображения в JPG если нужно"""
+        """Конвертация изображения в JPG"""
         try:
-            # Читаем изображение
-            img = cv2.imread(image_path)
-            if img is not None:
-                # Если успешно прочитано, сохраняем как JPG
-                if not image_path.lower().endswith('.jpg'):
-                    new_path = os.path.splitext(image_path)[0] + '.jpg'
-                    cv2.imwrite(new_path, img, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                    # Удаляем старый файл
-                    if new_path != image_path:
-                        os.remove(image_path)
-            else:
-                # Если не удалось прочитать, удаляем файл
-                os.remove(image_path)
+            with Image.open(image_path) as img:
+                # Конвертируем в RGB если нужно
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Создаем новое имя файла
+                base_name = os.path.splitext(image_path)[0]
+                new_path = base_name + '.jpg'
+                
+                # Сохраняем как JPG
+                img.save(new_path, 'JPEG', quality=90)
+                
+                # Удаляем старый файл если нужно
+                if new_path != image_path:
+                    os.remove(image_path)
+                    
         except Exception as e:
-            print(f"Ошибка конвертации {image_path}: {e}")
+            print(f"Ошибка конвертации: {e}")
     
     def generate_filename(self, index):
         """Генерация имени файла с ведущими нулями"""
         return f"{index:04d}.jpg"
     
-    def remove_duplicates(self, folder_path):
-        """Удаление дубликатов изображений по хешу"""
-        print(f"Проверка дубликатов в {folder_path}...")
-        image_hashes = set()
-        files_to_remove = []
+    def download_test_images(self):
+        """Загрузка тестовых изображений из открытых источников"""
+        print("Загрузка тестовых изображений из открытых источников...")
         
-        # Сначала собираем все JPG файлы
-        jpg_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')]
+        # URL тестовых изображений тигра
+        tiger_urls = [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Walking_tiger_female.jpg/800px-Walking_tiger_female.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Tiger_in_the_water.jpg/800px-Tiger_in_the_water.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/2012_Suedchinesischer_Tiger.JPG/800px-2012_Suedchinesischer_Tiger.JPG",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Bengal_tiger_%28Panthera_tigris_tigris%29_female_3_crop.jpg/800px-Bengal_tiger_%28Panthera_tigris_tigris%29_female_3_crop.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/White_tiger_sitting.jpg/800px-White_tiger_sitting.jpg",
+        ]
         
-        for filename in jpg_files:
-            filepath = os.path.join(folder_path, filename)
-            try:
-                # Вычисляем хеш содержимого файла
-                with open(filepath, 'rb') as f:
-                    file_hash = hashlib.md5(f.read()).hexdigest()
-                
-                if file_hash in image_hashes:
-                    files_to_remove.append(filepath)
-                else:
-                    image_hashes.add(file_hash)
-            except Exception as e:
-                print(f"Ошибка обработки {filename}: {e}")
-                continue
+        # URL тестовых изображений леопарда
+        leopard_urls = [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Leopard_standing_in_tree_2.jpg/800px-Leopard_standing_in_tree_2.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Leopard_in_the_Colchester_Zoo.jpg/800px-Leopard_in_the_Colchester_Zoo.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Leopard_africa.jpg/800px-Leopard_africa.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Leopard_in_South_Africa.jpg/800px-Leopard_in_South_Africa.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Snow_leopard_1.jpg/800px-Snow_leopard_1.jpg",
+        ]
         
-        # Удаляем дубликаты
-        for filepath in files_to_remove:
-            os.remove(filepath)
-            print(f"Удален дубликат: {os.path.basename(filepath)}")
-        
-        return len(files_to_remove)
-    
-    def download_class_images(self, class_name, query_in_russian):
-        """Загрузка изображений для одного класса"""
-        print(f"\n{'='*50}")
-        print(f"Начинаем загрузку изображений для класса: {class_name}")
-        print(f"Запрос на русском: {query_in_russian}")
-        print('='*50)
-        
-        folder_path = self.class_folders[class_name]
-        
-        # Ищем изображения через API
-        print("Поиск URL изображений через API Яндекс...")
-        image_urls = self.get_yandex_image_urls(query_in_russian, num_images=1200)
-        print(f"Найдено URL изображений: {len(image_urls)}")
-        
-        if len(image_urls) == 0:
-            print("Не удалось найти изображения. Попробуем альтернативный метод...")
-            # Альтернативный метод: прямой поиск через HTML
-            encoded_query = urllib.parse.quote(query_in_russian)
-            search_url = f"https://yandex.ru/images/search?text={encoded_query}&isize=large"
+        # Загружаем изображения тигра
+        tiger_folder = self.class_folders['tiger']
+        for i, url in enumerate(tiger_urls):
+            filename = self.generate_filename(i)
+            save_path = os.path.join(tiger_folder, filename)
             
-            response = requests.get(search_url, headers=self.headers)
-            if response.status_code == 200:
-                self.parse_html_for_images(response.text, image_urls, 1200)
-        
-        # Загружаем изображения
-        downloaded_count = 0
-        failed_count = 0
-        
-        for i, url in enumerate(image_urls):
-            if downloaded_count >= 1000:
-                break
-                
-            filename = self.generate_filename(downloaded_count)
-            save_path = os.path.join(folder_path, filename)
-            
-            print(f"[{class_name}] Загрузка {downloaded_count+1}/1000...")
-            
+            print(f"Загрузка тигра {i+1}/{len(tiger_urls)}...")
             if self.download_image(url, save_path):
-                downloaded_count += 1
-            else:
-                failed_count += 1
+                self.convert_to_jpg(save_path)
+        
+        # Загружаем изображения леопарда
+        leopard_folder = self.class_folders['leopard']
+        for i, url in enumerate(leopard_urls):
+            filename = self.generate_filename(i)
+            save_path = os.path.join(leopard_folder, filename)
             
-            # Небольшая задержка чтобы не перегружать сервер
-            time.sleep(0.5)
-        
-        print(f"\nЗагрузка завершена для класса {class_name}:")
-        print(f"  Успешно: {downloaded_count}")
-        print(f"  Ошибок: {failed_count}")
-        
-        # Удаляем дубликаты
-        removed = self.remove_duplicates(folder_path)
-        print(f"  Удалено дубликатов: {removed}")
-        
-        # Переименовываем файлы чтобы не было пропусков
-        self.renumber_files(folder_path)
-        
-        return downloaded_count
+            print(f"Загрузка леопарда {i+1}/{len(leopard_urls)}...")
+            if self.download_image(url, save_path):
+                self.convert_to_jpg(save_path)
     
-    def renumber_files(self, folder_path):
-        """Перенумерация файлов после удаления дубликатов"""
-        # Сортируем файлы по имени
-        jpg_files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')])
-        
-        # Временная папка для избежания конфликтов имен
-        temp_folder = os.path.join(folder_path, "temp")
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
-        
-        # Перемещаем файлы во временную папку с новыми именами
-        for i, filename in enumerate(jpg_files):
-            old_path = os.path.join(folder_path, filename)
-            new_filename = self.generate_filename(i)
-            temp_path = os.path.join(temp_folder, new_filename)
-            
-            os.rename(old_path, temp_path)
-        
-        # Перемещаем обратно
-        for filename in os.listdir(temp_folder):
-            old_path = os.path.join(temp_folder, filename)
-            new_path = os.path.join(folder_path, filename)
-            os.rename(old_path, new_path)
-        
-        # Удаляем временную папку
-        os.rmdir(temp_folder)
-    
-    def preview_images(self, class_name, num_to_preview=10):
-        """Просмотр части изображений для проверки"""
-        print(f"\nПросмотр изображений класса: {class_name}")
-        folder_path = self.class_folders[class_name]
-        
-        # Получаем список JPG файлов
-        image_files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')])[:num_to_preview]
-        
-        if not image_files:
-            print("  Нет изображений для просмотра")
-            return
-        
-        for filename in image_files:
-            filepath = os.path.join(folder_path, filename)
-            try:
-                # Читаем изображение
-                image = cv2.imread(filepath)
-                if image is not None:
-                    print(f"  {filename}: Размер {image.shape}")
-                    
-                    # Показываем изображение (раскомментируйте для просмотра)
-                    # cv2.imshow(f"{class_name} - {filename}", image)
-                    # cv2.waitKey(500)  # Показываем 500 мс
-                    # cv2.destroyAllWindows()
-                else:
-                    print(f"  {filename}: Не удалось прочитать (битый файл)")
-                    # Удаляем битый файл
-                    os.remove(filepath)
-            except Exception as e:
-                print(f"  {filename}: Ошибка {e}")
-    
-    def check_and_fill_dataset(self):
-        """Проверка и дополнение набора данных если нужно"""
-        print("\nПроверка набора данных...")
-        
-        for class_name in self.classes:
-            folder_path = self.class_folders[class_name]
-            jpg_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')]
-            current_count = len(jpg_files)
-            
-            print(f"  {class_name}: {current_count} изображений")
-            
-            if current_count < 1000:
-                print(f"  Необходимо добавить еще {1000 - current_count} изображений")
-                # Дополнительные запросы для дозагрузки
-                additional_queries = {
-                    'tiger': ['тигр амурский', 'тигр бенгальский', 'тигр фото'],
-                    'leopard': ['леопард снежный', 'леопард африканский', 'леопард животное фото']
-                }
-                
-                for additional_query in additional_queries.get(class_name, []):
-                    if current_count >= 1000:
-                        break
-                        
-                    print(f"  Дополнительный запрос: {additional_query}")
-                    self.download_class_images(class_name, additional_query)
-                    
-                    # Обновляем счетчик
-                    jpg_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')]
-                    current_count = len(jpg_files)
-    
-    def run(self):
-        """Основной метод выполнения"""
-        print("Начало выполнения задания")
+    def run_simple_test(self):
+        """Простой тест - загрузка нескольких изображений"""
+        print("="*60)
+        print("ПРОСТОЙ ТЕСТ: Загрузка 5 изображений для каждого класса")
         print("="*60)
         
-        # 1. Создаем папки
+        # Создаем папки
         self.create_class_folders()
         
-        # 2. Загружаем изображения для каждого класса
-        class_queries = {
-            'tiger': 'тигр',
-            'leopard': 'леопард'
-        }
+        # Загружаем тестовые изображения
+        self.download_test_images()
         
+        # Проверяем результаты
+        print("\nПроверка результатов:")
         for class_name in self.classes:
-            # Загружаем изображения
-            count = self.download_class_images(class_name, class_queries[class_name])
+            folder = self.class_folders[class_name]
+            files = [f for f in os.listdir(folder) if f.lower().endswith('.jpg')]
+            print(f"  {class_name}: {len(files)} изображений")
             
-            # Просматриваем часть изображений для проверки
-            self.preview_images(class_name)
-        
-        # 3. Проверяем и дополняем если нужно
-        self.check_and_fill_dataset()
-        
-        print("\n" + "="*60)
-        print("Задание выполнено!")
-        print(f"Итоговые данные сохранены в папке: {self.dataset_path}")
-        
-        # Выводим статистику
-        print("\nИтоговая статистика:")
-        for class_name in self.classes:
-            folder_path = self.class_folders[class_name]
-            num_files = len([f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')])
-            print(f"  {class_name}: {num_files} изображений")
+            # Показываем информацию о файлах
+            for file in files[:3]:  # Первые 3 файла
+                filepath = os.path.join(folder, file)
+                size = os.path.getsize(filepath)
+                print(f"    {file}: {size} байт")
 
-# Запуск программы
-if __name__ == "__main__":
+def main():
+    """Основная функция"""
+    print("Проверка зависимостей...")
+    
+    try:
+        # Проверяем Pillow
+        from PIL import Image
+        print("✓ Pillow установлен")
+    except ImportError:
+        print("✗ Pillow не установлен. Установите: pip install Pillow")
+        return
+    
+    try:
+        # Проверяем requests
+        import requests
+        print("✓ requests установлен")
+        
+        # Проверяем подключение к интернету
+        test_response = requests.get("https://www.google.com", timeout=5)
+        if test_response.status_code == 200:
+            print("✓ Подключение к интернету есть")
+        else:
+            print("✗ Проблемы с подключением к интернету")
+            return
+            
+    except Exception as e:
+        print(f"✗ Ошибка: {e}")
+        return
+    
+    # Запускаем тест
     downloader = ImageDownloader()
-    downloader.run()
+    downloader.run_simple_test()
+    
+    print("\n" + "="*60)
+    print("Хотите попробовать загрузить больше изображений с Яндекс? (y/n)")
+    choice = input().strip().lower()
+    
+    if choice == 'y':
+        print("\nПопытка загрузки с Яндекс.Картинок...")
+        
+        # Пробуем загрузить с Яндекса
+        for class_name in downloader.classes:
+            folder = downloader.class_folders[class_name]
+            query = "тигр" if class_name == "tiger" else "леопард"
+            
+            print(f"\nПоиск изображений для '{class_name}' (запрос: '{query}')...")
+            
+            # Получаем URL
+            urls = downloader.get_image_urls_simple(query, num_images=10)
+            print(f"Найдено URL: {len(urls)}")
+            
+            # Загружаем изображения
+            existing_files = len([f for f in os.listdir(folder) if f.lower().endswith('.jpg')])
+            
+            for i, url in enumerate(urls):
+                if i >= 5:  # Ограничимся 5 изображениями для теста
+                    break
+                    
+                filename = downloader.generate_filename(existing_files + i)
+                save_path = os.path.join(folder, filename)
+                
+                print(f"  Загрузка {i+1}/5...")
+                if downloader.download_image(url, save_path):
+                    downloader.convert_to_jpg(save_path)
+                time.sleep(1)  # Задержка между загрузками
+            
+            # Обновляем счетчик файлов
+            files = [f for f in os.listdir(folder) if f.lower().endswith('.jpg')]
+            print(f"  Всего изображений {class_name}: {len(files)}")
+
+if __name__ == "__main__":
+    main()
