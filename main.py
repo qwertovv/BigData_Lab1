@@ -4,6 +4,7 @@ import json
 import urllib.parse
 import time
 import hashlib
+import cv2
 
 class ImageDownloader:
     def __init__(self):
@@ -102,6 +103,15 @@ class ImageDownloader:
             os.remove(filepath)
         
         return len(files_to_remove)
+    def preview_images(self, class_name):
+        folder_path = self.class_folders[class_name]
+        image_files = os.listdir(folder_path)[:10]
+        
+        for filename in image_files:
+            filepath = os.path.join(folder_path, filename)
+            image = cv2.imread(filepath)
+            if image is not None:
+                print(f"{filename}: Размер {image.shape}")
 
 if __name__ == "__main__":
     downloader = ImageDownloader()
