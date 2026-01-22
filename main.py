@@ -112,6 +112,16 @@ class ImageDownloader:
             image = cv2.imread(filepath)
             if image is not None:
                 print(f"{filename}: Размер {image.shape}")
+    def convert_to_jpg(self, image_path):
+        try:
+            img = cv2.imread(image_path)
+            if img is not None:
+                if not image_path.lower().endswith('.jpg'):
+                    new_path = os.path.splitext(image_path)[0] + '.jpg'
+                    cv2.imwrite(new_path, img)
+                    os.remove(image_path)
+        except:
+            pass
 
 if __name__ == "__main__":
     downloader = ImageDownloader()
