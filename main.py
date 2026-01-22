@@ -17,6 +17,19 @@ class ImageDownloader:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         }
+    def download_image(self, url, save_path):
+        try:
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                with open(save_path, 'wb') as f:
+                    f.write(response.content)
+                return True
+        except:
+            return False
+    
+    def generate_filename(self, index):
+        return f"{index:04d}.jpg"
     def get_yandex_image_urls(self, query, num_images=1200):
         image_urls = []
         page = 0
