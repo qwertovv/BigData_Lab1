@@ -1,0 +1,37 @@
+======================================================================
+СТАТИСТИКА СОЗДАНИЯ ДАТАСЕТА
+======================================================================
+
+Дата создания: 2026-01-29 10:06:31
+Количество классов: 2
+Классы: tiger, leopard
+
+ОБЩАЯ СТАТИСТИКА:
+  Всего просмотрено страниц/источников: 12
+  Всего найдено изображений: 40
+  Всего загружено изображений: 3
+  Среднее количество картинок на странице: 3.3
+  Среднее время скачивания картинки: 4.810 сек.
+  Общее время выполнения: 190.36 сек.
+
+РЕЗУЛЬТАТЫ ПО КЛАССАМ:
+  TIGER: 3 изображений (страниц: 6)
+  LEOPARD: 0 изображений (страниц: 6)
+
+СТРУКТУРА ПАПОК:
+  dataset/tiger/ - 2 файлов
+  dataset/leopard/ - 0 файлов
+
+ОШИБКИ (20):
+  Ошибка загрузки https://images.pexels.com/photos/792381/pexels-photo-792381.jpeg: ('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer'))
+  Ошибка загрузки https://images.pexels.com/photos/145962/pexels-photo-145962.jpeg: ('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer'))
+  Ошибка загрузки https://images.pexels.com/photos/162203/tiger-panthera-tigris-bengal-cat-162203.jpeg: ('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer'))
+  Ошибка загрузки https://images.pexels.com/photos/45853/striped-tiger-cat-grey-45853.jpeg: ('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer'))
+  Ошибка загрузки https://images.pexels.com/photos/3616232/pexels-photo-3616232.jpeg: ('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer'))
+  Ошибка загрузки https://cdn.pixabay.com/photo/2017/07/24/19/57/tiger-2535888_1280.jpg: HTTPSConnectionPool(host='cdn.pixabay.com', port=443): Read timed out. (read timeout=15)
+  Ошибка загрузки https://cdn.pixabay.com/photo/2017/10/25/16/54/tiger-2888518_1280.jpg: HTTPSConnectionPool(host='cdn.pixabay.com', port=443): Read timed out. (read timeout=15)
+  Ошибка загрузки https://cdn.pixabay.com/photo/2018/05/20/16/24/tiger-3415717_1280.jpg: HTTPSConnectionPool(host='cdn.pixabay.com', port=443): Read timed out. (read timeout=15)
+  Ошибка загрузки https://cdn.pixabay.com/photo/2018/07/17/16/57/tiger-3544598_1280.jpg: HTTPSConnectionPool(host='cdn.pixabay.com', port=443): Read timed out. (read timeout=15)
+  Ошибка загрузки https://cdn.pixabay.com/photo/2019/02/26/16/32/tiger-4022464_1280.jpg: HTTPSConnectionPool(host='cdn.pixabay.com', port=443): Read timed out. (read timeout=15)
+
+======================================================================
